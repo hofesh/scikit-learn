@@ -1186,7 +1186,9 @@ class BaseGradientBoosting(six.with_metaclass(ABCMeta, BaseEnsemble)):
         # for use in inner loop, not raveling the output in single-class case,
         # not doing input validation.
         score = self._init_decision_function(X)
-        predict_stages(self.estimators_, X, self.learning_rate, score)
+        use_seed = isinstance(self.random_state, int)
+        random_state = self.random_state if use_seed else 0
+        predict_stages(self.estimators_, X, self.learning_rate, score, random_state, use_seed)
         return score
 
 

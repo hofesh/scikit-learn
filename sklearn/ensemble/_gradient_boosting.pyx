@@ -10,6 +10,7 @@ cimport cython
 
 from libc.stdlib cimport free
 from libc.string cimport memset
+from libc.math cimport isnan
 
 import numpy as np
 cimport numpy as np
@@ -35,7 +36,14 @@ from numpy import ones as np_ones
 from numpy import bool as np_bool
 from numpy import float32 as np_float32
 from numpy import float64 as np_float64
+import numpy as np
 
+from libc.stdlib cimport rand, srand, RAND_MAX
+
+
+print("***********************************************************")
+print("************** USING MODIFIED SCKIKIT-LEARN ***************")
+print("***********************************************************")
 
 # constant to mark tree leafs
 cdef SIZE_t TREE_LEAF = -1
@@ -87,17 +95,34 @@ cdef void _predict_regression_tree_inplace_fast_dense(DTYPE_t *X,
         ``out`` is assumed to be a two-dimensional array of
         shape ``(n_samples, K)``.
     """
+
     cdef Py_ssize_t i
     cdef Node *node
+    cdef double feature_val
+    cdef Node* left_node
+    cdef Node* right_node
+    cdef p_left
     for i in range(n_samples):
         node = root_node
         # While node not a leaf
         while node.left_child != TREE_LEAF:
-            if X[i * n_features + node.feature] <= node.threshold:
+            feature_val = X[i * n_features + node.feature]
+            if True and isnan(feature_val):
+                left_node = root_node + node.left_child
+                right_node = root_node + node.right_child
+                p_left = <double>left_node.n_node_samples / (left_node.n_node_samples + right_node.n_node_samples)
+                #if np.random.random() < p_left:
+                if (rand() / float(RAND_MAX)) < p_left:
+                    node = left_node
+                else:
+                    node = right_node
+
+            elif feature_val <= node.threshold:
                 node = root_node + node.left_child
             else:
                 node = root_node + node.right_child
         out[i * K + k] += scale * value[node - root_node]
+    #print("in _predict_regression_tree_inplace_fast_dense")
 
 def _predict_regression_tree_stages_sparse(np.ndarray[object, ndim=2] estimators,
                                            object X, double scale,
@@ -190,7 +215,7 @@ def _predict_regression_tree_stages_sparse(np.ndarray[object, ndim=2] estimators
 
 def predict_stages(np.ndarray[object, ndim=2] estimators,
                    object X, double scale,
-                   np.ndarray[float64, ndim=2] out):
+                   np.ndarray[float64, ndim=2] out, int random_seed, int use_seed):
     """Add predictions of ``estimators`` to ``out``.
 
     Each estimator is scaled by ``scale`` before its prediction
@@ -201,6 +226,9 @@ def predict_stages(np.ndarray[object, ndim=2] estimators,
     cdef Py_ssize_t n_estimators = estimators.shape[0]
     cdef Py_ssize_t K = estimators.shape[1]
     cdef Tree tree
+
+    if use_seed:
+        srand(random_seed)
 
     if issparse(X):
         if X.format != 'csr':
